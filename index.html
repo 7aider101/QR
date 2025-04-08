@@ -293,29 +293,47 @@
 
     // معالجة رمز QR من الصورة المرفوعة
     imageUpload.addEventListener('change', () => {
-      stopCamera();
-      const file = imageUpload.files[0];
-      if (file) {
-        resultDiv.textContent = 'جارٍ معالجة الصورة...';
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          imagePreview.src = e.target.result;
-          imagePreview.style.display = 'block';
-          const img = new Image();
-          img.onload = async function() {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            canvasContext.clearRect(0, 0, canvas.width, canvas.height);
-            canvasContext.drawImage(img, 0, 0, img.width, img.height);
-            const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
-            const code = await processImageData(imageData);
-            if (code) {
-              drawBoundingBox(code.location);
-              displayResult(code.data, code.location);
-            } else {
-              resultDiv.textContent = 'لم يتم العثور على رمز QR في الصورة.';
-            }
-          };
+    imageUpload.addEventListener('change', () => {
+  stopCamera();
+  const file = imageUpload.files[0];
+  if (file) {
+    resultDiv.textContent = 'جارٍ معالجة الصورة...';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      imagePreview.src = e.target.result;
+      imagePreview.style.display = 'block';
+      const img = new Image();
+      img.onload = async function() {
+        // تغيير حجم الصورة إذا كانت كبيرة جدًا
+        const maxWidth = 800;
+        const maxHeight = 800;
+        const ratio = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+        const scaledWidth = img.width * ratio;
+        const scaledHeight = img.height * ratio;
+        canvas.width = scaledWidth;
+        canvas.height = scaledHeight;
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+        canvasContext.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+        const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+        const code = await processImageData(imageData);
+        if (code) {
+          drawBoundingBox(code.location);
+          displayResult(code.data, code.location);
+        } else {
+          resultDiv.textContent = 'لم يتم العثور على رمز QR في الصورة.';
+        }
+      };
+      img.onerror = function() {
+        resultDiv.textContent = 'حدث خطأ في تحميل الصورة.';
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    imagePreview.style.display = 'none';
+    resultDiv.textContent = '';
+  }
+});
           img.onerror = function() {
             resultDiv.textContent = 'حدث خطأ في تحميل الصورة.';
           };
