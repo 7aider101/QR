@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قارئ رمز QR متجاوب</title>
+  <!-- تحميل مكتبة EXIF.js لتصحيح اتجاه الصورة -->
+  <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
   <style>
     /* إعدادات الألوان */
     :root {
@@ -291,50 +293,77 @@
       requestAnimationFrame(scanQRCode);
     }
 
-    // معالجة رمز QR من الصورة المرفوعة
-    
+    // معالجة رمز QR من الصورة المرفوعة مع تصحيح اتجاه الصورة
     imageUpload.addEventListener('change', () => {
-  stopCamera();
-  const file = imageUpload.files[0];
-  if (file) {
-    resultDiv.textContent = 'جارٍ معالجة الصورة...';
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      imagePreview.src = e.target.result;
-      imagePreview.style.display = 'block';
-      const img = new Image();
-      img.onload = async function() {
-        // تغيير حجم الصورة إذا كانت كبيرة جدًا
-        const maxWidth = 800;
-        const maxHeight = 800;
-        const ratio = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
-        const scaledWidth = img.width * ratio;
-        const scaledHeight = img.height * ratio;
-        canvas.width = scaledWidth;
-        canvas.height = scaledHeight;
-        canvasContext.clearRect(0, 0, canvas.width, canvas.height);
-        canvasContext.drawImage(img, 0, 0, scaledWidth, scaledHeight);
-        const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
-        const code = await processImageData(imageData);
-        if (code) {
-          drawBoundingBox(code.location);
-          displayResult(code.data, code.location);
-        } else {
-          resultDiv.textContent = 'لم يتم العثور على رمز QR في الصورة.';
-        }
-      };
-      img.onerror = function() {
-        resultDiv.textContent = 'حدث خطأ في تحميل الصورة.';
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  } else {
-    imagePreview.style.display = 'none';
-    resultDiv.textContent = '';
-  }
-});
-          
+      stopCamera();
+      const file = imageUpload.files[0];
+      if (file) {
+        resultDiv.textContent = 'جارٍ معالجة الصورة...';
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          imagePreview.src = e.target.result;
+          imagePreview.style.display = 'block';
+          const img = new Image();
+          img.onload = function() {
+            // تغيير حجم الصورة إذا كانت كبيرة جدًا
+            const maxWidth = 800;
+            const maxHeight = 800;
+            const ratio = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+            const scaledWidth = img.width * ratio;
+            const scaledHeight = img.height * ratio;
+            // استخدام EXIF لتصحيح اتجاه الصورة
+            EXIF.getData(img, function() {
+              let orientation = EXIF.getTag(this, "Orientation") || 1;
+              // تحديد أبعاد الكانفس بناءً على الاتجاه
+              if (orientation > 4) {
+                canvas.width = scaledHeight;
+                canvas.height = scaledWidth;
+              } else {
+                canvas.width = scaledWidth;
+                canvas.height = scaledHeight;
+              }
+              canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+              // تطبيق التحويل بناءً على قيمة orientation
+              switch (orientation) {
+                case 3:
+                  canvasContext.translate(canvas.width, canvas.height);
+                  canvasContext.rotate(Math.PI);
+                  break;
+                case 6:
+                  canvasContext.translate(canvas.width, 0);
+                  canvasContext.rotate(Math.PI / 2);
+                  break;
+                case 8:
+                  canvasContext.translate(0, canvas.height);
+                  canvasContext.rotate(-Math.PI / 2);
+                  break;
+                default:
+                  break;
+              }
+              // رسم الصورة على الكانفس بالقيم المحسوبة
+              canvasContext.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+              const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+              processImageData(imageData).then(code => {
+                if (code) {
+                  drawBoundingBox(code.location);
+                  displayResult(code.data, code.location);
+                } else {
+                  resultDiv.textContent = 'لم يتم العثور على رمز QR في الصورة.';
+                }
+              });
+            });
+          };
+          img.onerror = function() {
+            resultDiv.textContent = 'حدث خطأ في تحميل الصورة.';
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        imagePreview.style.display = 'none';
+        resultDiv.textContent = '';
+      }
+    });
 
     // عرض النتيجة وإضافة سجل النتائج ودعم المشاركة
     function displayResult(data, location = null) {
