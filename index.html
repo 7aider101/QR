@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Code Reader</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+      background-color: #f4f4f4;
+    }
+    .input-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    #video-container {
+      position: relative;
+      width: 300px;
+      height: 300px;
+      overflow: hidden;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      display: none;
+    }
+    #qr-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #image-upload-container {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+    #image-preview {
+      max-width: 300px;
+      max-height: 300px;
+      border: 1px solid #ccc;
+      margin-top: 10px;
+      display: none;
+    }
+    #qr-canvas {
+      display: none;
+    }
+    .result-container {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+    #result {
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    #result a {
+      color: blue;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="input-controls">
+    <button id="start-camera">مسح بالكاميرا</button>
+    <div id="image-upload-container">
+      <label for="image-upload">رفع صورة</label>
+      <input type="file" id="image-upload" accept="image/*">
+      <img id="image-preview" src="#" alt="الصورة المرفوعة">
+    </div>
+  </div>
+
+  <div id="video-container">
+    <video id="qr-video"></video>
+    <canvas id="qr-canvas"></canvas>
+  </div>
+
+  <div class="result-container">
+    <h2>نتيجة المسح</h2>
+    <div id="result"></div>
+  </div>
+
+  <!-- تحميل مكتبة jsQR من CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script>
+    const startCameraButton = document.getElementById('start-camera');
+    const imageUpload = document.getElementById('image-upload');
+    const imagePreview = document.getElementById('image-preview');
+    const videoContainer = document.getElementById('video-container');
+    const video = document.getElementById('qr-video');
+    const canvas = document.getElementById('qr-canvas');
+    const resultDiv = document.getElementById('result');
+    const canvasContext = canvas.getContext('2d');
+    let scanning = false;
+    let stream;
+
+    // إيقاف الكاميرا وإخفاء الفيديو
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+        scanning = false;
+        videoContainer.style.display = 'none';
+      }
+    }
+
+    // طلب الوصول إلى الكاميرا والبدء بالمسح
+    function requestCamera() {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(s => {
+          stream = s;
+          video.srcObject = stream;
+          video.play();
+          videoContainer.style.display = 'block';
+          scanning = true;
+          requestAnimationFrame(scanQRCode);
+          resultDiv.textContent = 'جارٍ المسح...';
+          imagePreview.style.display = 'none'; // إخفاء المعاينة عند بدء الكاميرا
+        })
+        .catch(err => {
+          console.error('خطأ في الوصول للكاميرا:', err);
+          resultDiv.textContent = 'حدث خطأ في الوصول للكاميرا.';
+          videoContainer.style.display = 'none';
+          scanning = false;
+        });
+    }
+
+    // مسح متواصل للرمز من الفيديو
+    function scanQRCode() {
+      if (!scanning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth;
+        canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert',
+        });
+        if (code) {
+          stopCamera();
+          displayResult(code.data);
+          return;
+        }
+      }
+      requestAnimationFrame(scanQRCode);
+    }
+
+    // التعامل مع رفع الصورة لمسح رمز QR
+    imageUpload.addEventListener('change', (event) => {
+      stopCamera(); // إيقاف الكاميرا إذا كانت تعمل
+      const file = event.target.files[0];
+      if (file) {
+        resultDiv.textContent = 'جارٍ معالجة الصورة...';
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          // عرض المعاينة
+          imagePreview.src = e.target.result;
+          imagePreview.style.display = 'block';
+
+          // إنشاء عنصر صورة جديد لمعالجة الملف
+          const img = new Image();
+          img.onload = function() {
+            // ضبط حجم الكانفس ورسم الصورة
+            canvas.width = img.width;
+            canvas.height = img.height;
+            canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+            canvasContext.drawImage(img, 0, 0, img.width, img.height);
+            const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: 'dontInvert',
+            });
+            if (code) {
+              displayResult(code.data);
+            } else {
+              resultDiv.textContent = 'لم يتم العثور على رمز QR في الصورة.';
+            }
+          };
+          img.onerror = function() {
+            resultDiv.textContent = 'حدث خطأ في تحميل الصورة.';
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        imagePreview.style.display = 'none';
+        resultDiv.textContent = '';
+      }
+    });
+
+    // بدء الكاميرا عند النقر على الزر
+    startCameraButton.addEventListener('click', requestCamera);
+
+    // عرض النتيجة وفي حال كانت رابطاً يتم تحويلها إلى رابط تشعبي
+    function displayResult(data) {
+      if (data.startsWith('http://') || data.startsWith('https://')) {
+        resultDiv.innerHTML = `<a href="${data}" target="_blank">${data}</a>`;
+      } else {
+        resultDiv.textContent = data;
+      }
+    }
+  </script>
+</body>
+</html>
