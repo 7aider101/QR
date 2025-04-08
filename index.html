@@ -292,7 +292,7 @@
     }
 
     // معالجة رمز QR من الصورة المرفوعة
-    imageUpload.addEventListener('change', () => {
+    
     imageUpload.addEventListener('change', () => {
   stopCamera();
   const file = imageUpload.files[0];
@@ -334,17 +334,7 @@
     resultDiv.textContent = '';
   }
 });
-          img.onerror = function() {
-            resultDiv.textContent = 'حدث خطأ في تحميل الصورة.';
-          };
-          img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      } else {
-        imagePreview.style.display = 'none';
-        resultDiv.textContent = '';
-      }
-    });
+          
 
     // عرض النتيجة وإضافة سجل النتائج ودعم المشاركة
     function displayResult(data, location = null) {
