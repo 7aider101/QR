@@ -3,30 +3,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QR Code Reader</title>
+  <title>قارئ رمز QR متكامل</title>
   <style>
+    /* تنسيقات عامة للصفحة */
     body {
-      font-family: sans-serif;
+      font-family: 'Arial', sans-serif;
+      background: linear-gradient(135deg, #74ABE2, #5563DE);
+      margin: 0;
+      padding: 20px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 20px;
-      padding: 20px;
-      background-color: #f4f4f4;
+      min-height: 100vh;
+      color: #333;
     }
+    h1, h2 {
+      color: #fff;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    /* تنسيق عناصر الإدخال */
     .input-controls {
       display: flex;
-      gap: 10px;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
       margin-bottom: 20px;
     }
+    button, label {
+      background-color: #fff;
+      color: #333;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover, label:hover {
+      background-color: #f0f0f0;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    /* حاوية الفيديو والمعاينة */
     #video-container {
       position: relative;
       width: 300px;
       height: 300px;
       overflow: hidden;
       border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       display: none;
+      background-color: #000;
     }
     #qr-video {
       width: 100%;
@@ -37,37 +68,64 @@
       background-color: #fff;
       padding: 20px;
       border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
       text-align: center;
     }
     #image-preview {
       max-width: 300px;
       max-height: 300px;
-      border: 1px solid #ccc;
+      border: 2px solid #ccc;
       margin-top: 10px;
+      border-radius: 8px;
       display: none;
     }
-    #qr-canvas {
-      display: none;
-    }
+    /* منطقة النتيجة */
     .result-container {
       background-color: #fff;
       padding: 20px;
       border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      width: 90%;
+      max-width: 400px;
       text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      margin-top: 20px;
     }
     #result {
       font-weight: bold;
       margin-top: 10px;
+      word-break: break-all;
     }
     #result a {
-      color: blue;
+      color: #5563DE;
       text-decoration: underline;
+    }
+    /* سجل النتائج */
+    .history-container {
+      background-color: rgba(255,255,255,0.9);
+      padding: 15px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 400px;
+      margin-top: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .history-container h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    .history-item {
+      background: #f7f7f7;
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 5px;
+      font-size: 14px;
+      word-break: break-all;
     }
   </style>
 </head>
 <body>
+  <h1>قارئ رمز QR متكامل</h1>
+  <p>استخدم الكاميرا لمسح رمز QR أو قم برفع صورة تحتوي على رمز QR.</p>
   <div class="input-controls">
     <button id="start-camera">مسح بالكاميرا</button>
     <div id="image-upload-container">
@@ -85,10 +143,32 @@
   <div class="result-container">
     <h2>نتيجة المسح</h2>
     <div id="result"></div>
+    <button id="share-button" style="display:none; margin-top:10px;">شارك النتيجة</button>
   </div>
 
-  <!-- تحميل مكتبة jsQR من CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <div class="history-container" id="history-container" style="display:none;">
+    <h3>سجل النتائج</h3>
+    <div id="history-list"></div>
+  </div>
+
+  <!-- إنشاء Web Worker لمعالجة بيانات الصورة -->
+  <script>
+    // شفرة الويب ووركر
+    const workerCode = `
+      importScripts('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+      self.addEventListener('message', function(e) {
+        const imageData = e.data;
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth'
+        });
+        self.postMessage(code);
+      });
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerURL = URL.createObjectURL(blob);
+    const qrWorker = new Worker(workerURL);
+  </script>
+
   <script>
     const startCameraButton = document.getElementById('start-camera');
     const imageUpload = document.getElementById('image-upload');
@@ -97,11 +177,14 @@
     const video = document.getElementById('qr-video');
     const canvas = document.getElementById('qr-canvas');
     const resultDiv = document.getElementById('result');
+    const shareButton = document.getElementById('share-button');
+    const historyContainer = document.getElementById('history-container');
+    const historyList = document.getElementById('history-list');
     const canvasContext = canvas.getContext('2d');
     let scanning = false;
     let stream;
 
-    // إيقاف الكاميرا وإخفاء الفيديو
+    // وظيفة لإيقاف الكاميرا
     function stopCamera() {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
@@ -111,7 +194,7 @@
       }
     }
 
-    // طلب الوصول إلى الكاميرا والبدء بالمسح
+    // وظيفة لبدء الكاميرا والبدء في عملية المسح
     function requestCamera() {
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         .then(s => {
@@ -120,64 +203,69 @@
           video.play();
           videoContainer.style.display = 'block';
           scanning = true;
-          requestAnimationFrame(scanQRCode);
           resultDiv.textContent = 'جارٍ المسح...';
           imagePreview.style.display = 'none'; // إخفاء المعاينة عند بدء الكاميرا
+          scanQRCode();
         })
         .catch(err => {
           console.error('خطأ في الوصول للكاميرا:', err);
           resultDiv.textContent = 'حدث خطأ في الوصول للكاميرا.';
-          videoContainer.style.display = 'none';
           scanning = false;
+          videoContainer.style.display = 'none';
         });
     }
 
-    // مسح متواصل للرمز من الفيديو
-    function scanQRCode() {
+    // وظيفة لإرسال بيانات الصورة إلى الويب ووركر والتحقق من وجود رمز QR
+    function processImageData(imageData) {
+      return new Promise((resolve) => {
+        qrWorker.onmessage = (e) => {
+          resolve(e.data);
+        };
+        qrWorker.postMessage(imageData);
+      });
+    }
+
+    // وظيفة لمسح رمز QR من الفيديو
+    async function scanQRCode() {
       if (!scanning) return;
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.height = video.videoHeight;
         canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'dontInvert',
-        });
+        const code = await processImageData(imageData);
         if (code) {
+          // رسم مستطيل حول رمز QR
+          drawBoundingBox(code.location);
           stopCamera();
-          displayResult(code.data);
+          displayResult(code.data, code.location);
           return;
         }
       }
       requestAnimationFrame(scanQRCode);
     }
 
-    // التعامل مع رفع الصورة لمسح رمز QR
-    imageUpload.addEventListener('change', (event) => {
+    // وظيفة لمسح رمز QR من الصورة المرفوعة
+    imageUpload.addEventListener('change', () => {
       stopCamera(); // إيقاف الكاميرا إذا كانت تعمل
-      const file = event.target.files[0];
+      const file = imageUpload.files[0];
       if (file) {
         resultDiv.textContent = 'جارٍ معالجة الصورة...';
         const reader = new FileReader();
         reader.onload = (e) => {
-          // عرض المعاينة
           imagePreview.src = e.target.result;
           imagePreview.style.display = 'block';
-
-          // إنشاء عنصر صورة جديد لمعالجة الملف
           const img = new Image();
-          img.onload = function() {
-            // ضبط حجم الكانفس ورسم الصورة
+          img.onload = async function() {
             canvas.width = img.width;
             canvas.height = img.height;
             canvasContext.clearRect(0, 0, canvas.width, canvas.height);
             canvasContext.drawImage(img, 0, 0, img.width, img.height);
             const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height, {
-              inversionAttempts: 'dontInvert',
-            });
+            const code = await processImageData(imageData);
             if (code) {
-              displayResult(code.data);
+              drawBoundingBox(code.location);
+              displayResult(code.data, code.location);
             } else {
               resultDiv.textContent = 'لم يتم العثور على رمز QR في الصورة.';
             }
@@ -194,17 +282,54 @@
       }
     });
 
-    // بدء الكاميرا عند النقر على الزر
-    startCameraButton.addEventListener('click', requestCamera);
-
-    // عرض النتيجة وفي حال كانت رابطاً يتم تحويلها إلى رابط تشعبي
-    function displayResult(data) {
+    // وظيفة لعرض نتيجة المسح مع دعم مشاركة الرابط وإضافة النتيجة للسجل
+    function displayResult(data, location = null) {
       if (data.startsWith('http://') || data.startsWith('https://')) {
         resultDiv.innerHTML = `<a href="${data}" target="_blank">${data}</a>`;
+        shareButton.style.display = 'inline-block';
+        shareButton.onclick = () => {
+          if (navigator.share) {
+            navigator.share({ title: 'QR Code', url: data });
+          } else {
+            alert('ميزة المشاركة غير مدعومة في متصفحك.');
+          }
+        };
       } else {
         resultDiv.textContent = data;
+        shareButton.style.display = 'none';
+      }
+      addHistoryItem(data);
+      // محاولة تقديم تغذية رجعية لمسية (اهتزاز) إن كانت مدعومة
+      if (navigator.vibrate) {
+        navigator.vibrate(200);
       }
     }
+
+    // وظيفة لرسم مستطيل حول رمز QR المكتشف
+    function drawBoundingBox(location) {
+      if (!location) return;
+      canvasContext.lineWidth = 4;
+      canvasContext.strokeStyle = 'red';
+      canvasContext.beginPath();
+      canvasContext.moveTo(location.topLeftCorner.x, location.topLeftCorner.y);
+      canvasContext.lineTo(location.topRightCorner.x, location.topRightCorner.y);
+      canvasContext.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y);
+      canvasContext.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y);
+      canvasContext.closePath();
+      canvasContext.stroke();
+    }
+
+    // وظيفة لإضافة النتيجة إلى سجل النتائج
+    function addHistoryItem(data) {
+      historyContainer.style.display = 'block';
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      item.textContent = data;
+      historyList.prepend(item);
+    }
+
+    // بدء الكاميرا عند النقر على الزر
+    startCameraButton.addEventListener('click', requestCamera);
   </script>
 </body>
 </html>
